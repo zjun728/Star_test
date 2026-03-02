@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel, Field
 
-from config import CITIES, get_city_coords
+from config import get_city_coords, search_cities
 from chart_service import get_daily_chart, get_natal_chart
 
 app = FastAPI(
@@ -65,11 +65,30 @@ async def root():
 
 
 @app.get("/api/cities")
-async def list_cities():
-    """返回支持的城市列表，便于工作流或前端选择。"""
+async def list_cities(
+    q: Optional[str] = Query(
+        None,
+        description="搜索关键字，如：广 / 广州 / guangzhou；为空则返回前若干城市",
+    ),
+    limit: int = Query(
+        200,
+        ge=1,
+        le=1000,
+        description="最多返回城市数量，默认 200，最大 1000",
+    ),
+):
+    """返回支持的城市列表，支持按关键字搜索。"""
+    items = search_cities(q, limit=limit)
     return {
-        "cities": sorted(CITIES.keys()),
-        "count": len(CITIES),
+        "cities": [
+            {
+                "name": c["name"],
+                "short": c["short"],
+                "province": c.get("province", ""),
+            }
+            for c in items
+        ],
+        "count": len(items),
     }
 
 

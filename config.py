@@ -1,43 +1,157 @@
 # -*- coding: utf-8 -*-
-"""城市经纬度与时区配置，供星盘计算使用。"""
+"""城市经纬度与时区配置，支持全国城市与搜索。
 
-# 中国常用城市：(纬度, 经度, 时区偏移小时)
-# 纬度：北纬为正；经度：东经为正
-CITIES = {
-    "广州": (23.1291, 113.2644, 8),
-    "北京": (39.9042, 116.4074, 8),
-    "上海": (31.2304, 121.4737, 8),
-    "深圳": (22.5431, 114.0579, 8),
-    "杭州": (30.2741, 120.1551, 8),
-    "成都": (30.5728, 104.0668, 8),
-    "武汉": (30.5928, 114.3055, 8),
-    "西安": (34.3416, 108.9398, 8),
-    "南京": (32.0603, 118.7969, 8),
-    "重庆": (29.4316, 106.9123, 8),
-    "天津": (39.3434, 117.3616, 8),
-    "苏州": (31.2989, 120.5853, 8),
-    "长沙": (28.2282, 112.9388, 8),
-    "郑州": (34.7466, 113.6253, 8),
-    "沈阳": (41.8057, 123.4328, 8),
-    "青岛": (36.0671, 120.3826, 8),
-    "香港": (22.3193, 114.1694, 8),
-    "台北": (25.0330, 121.5654, 8),
-    "乌鲁木齐": (43.8256, 87.6168, 8),
-    "拉萨": (29.6470, 91.1172, 8),
+依赖项目根目录下的 china_cities.json，结构示例：
+{
+  "cities": [
+    {
+      "name": "广州市",
+      "short": "广州",
+      "province": "广东省",
+      "lat": 23.1291,
+      "lon": 113.2644,
+      "tz": 8,
+      "aliases": ["广州", "广州市"]
+    }
+  ]
 }
+"""
+
+import json
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR
+CHINA_CITIES_FILE = PROJECT_ROOT / "china_cities.json"
+
+
+def _normalize_city_name(name: str) -> str:
+    """归一化城市名：去空格、去掉「市」，统一小写。"""
+    n = (name or "").strip()
+    if not n:
+        return ""
+    if n.endswith("市"):
+        n = n[:-1]
+    return n.lower()
+
+
+@lru_cache
+def _load_cities() -> List[Dict[str, Any]]:
+    """从 china_cities.json 加载城市数据。"""
+    if not CHINA_CITIES_FILE.exists():
+        return []
+
+    with CHINA_CITIES_FILE.open("r", encoding="utf-8") as f:
+        raw = f.read()
+
+    # 兼容可能存在的尾逗号等小问题
+    raw_stripped = raw.rstrip()
+    if raw_stripped.endswith(",}"):
+        raw_stripped = raw_stripped[:-2] + "}"
+
+    try:
+        data = json.loads(raw_stripped)
+    except json.JSONDecodeError:
+        data = json.loads(raw)
+
+    if isinstance(data, dict) and "cities" in data:
+        cities = data["cities"]
+    elif isinstance(data, list):
+        cities = data
+    else:
+        cities = []
+
+    normalized: List[Dict[str, Any]] = []
+    for c in cities:
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name")
+        short = c.get("short") or name
+        if not name:
+            continue
+
+        try:
+            lat = float(c.get("lat"))
+            lon = float(c.get("lon"))
+        except (TypeError, ValueError):
+            continue
+
+        tz = int(c.get("tz", 8))
+
+        normalized.append(
+            {
+                "name": name,
+                "short": short,
+                "province": c.get("province") or "",
+                "lat": lat,
+                "lon": lon,
+                "tz": tz,
+                "aliases": c.get("aliases") or [],
+            }
+        )
+
+    return normalized
+
+
+@lru_cache
+def _build_city_index() -> Dict[str, Dict[str, Any]]:
+    """基于 name / short / aliases 构建索引，便于快速查找城市。"""
+    index: Dict[str, Dict[str, Any]] = {}
+    for c in _load_cities():
+        keys = [c["name"], c["short"], *c.get("aliases", [])]
+        for k in keys:
+            nk = _normalize_city_name(k)
+            if not nk:
+                continue
+            index.setdefault(nk, c)
+    return index
 
 
 def get_city_coords(city: str):
     """
     根据城市名称返回 (纬度, 经度, 时区小时)。
+    支持「广州」「广州市」「Guangzhou」等写法。
     若城市不在表中，返回 None。
-    支持「广州」「广州市」等写法。
     """
     if not city:
         return None
-    key = city.strip()
-    if key in CITIES:
-        return CITIES[key]
-    if key.endswith("市"):
-        return CITIES.get(key[:-1])
-    return None
+    key = _normalize_city_name(city)
+    if not key:
+        return None
+    info = _build_city_index().get(key)
+    if not info:
+        return None
+    return info["lat"], info["lon"], info["tz"]
+
+
+def search_cities(keyword: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+    """
+    搜索城市列表，用于 /api/cities。
+
+    :param keyword: 可选关键字，如「广」「广州」「guangzhou」等
+    :param limit: 最多返回条数
+    """
+    cities = _load_cities()
+    if not keyword:
+        return cities[:limit]
+
+    kw = keyword.strip()
+    if not kw:
+        return cities[:limit]
+
+    kw_lower = kw.lower()
+    result: List[Dict[str, Any]] = []
+
+    for c in cities:
+        candidates = [c["name"], c["short"], c.get("province", "")]
+        candidates.extend(c.get("aliases", []))
+        text = " ".join(map(str, candidates))
+        if kw in text or kw_lower in text.lower():
+            result.append(c)
+            if len(result) >= limit:
+                break
+
+    return result

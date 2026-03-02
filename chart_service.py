@@ -9,7 +9,7 @@ from flatlib.datetime import Datetime
 from flatlib.geopos import GeoPos
 from flatlib import const
 
-from config import CITIES, get_city_coords
+from config import get_city_coords
 
 
 # 行星 ID 到中文/英文展示名
@@ -54,7 +54,7 @@ def get_daily_chart(
     coords = get_city_coords(city)
     if not coords:
         raise ValueError(
-            f"暂不支持城市「{city}」。支持列表: {', '.join(sorted(CITIES.keys()))}"
+            f"暂不支持城市「{city}」，请检查拼写，或先调用 /api/cities?q=城市名 搜索可用城市。"
         )
     lat, lon, tz_hours = coords
     tz_str = _format_tz(tz_hours)
