@@ -13,7 +13,7 @@ from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel, Field
 
 from config import get_city_coords, search_cities
-from chart_service import get_daily_chart, get_natal_chart
+from chart_service import get_daily_chart, get_natal_chart, get_daily_aspects
 
 app = FastAPI(
     title="星盘查询 API",
@@ -114,6 +114,24 @@ async def api_daily_chart_get(
     chart_date = _parse_date(date_str)
     try:
         data = get_daily_chart(chart_date, city.strip(), time_str=time.strip() or "12:00")
+        return {"success": True, "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/daily-aspects")
+async def api_daily_aspects_get(
+    date_str: Optional[str] = Query(None, description="日期 YYYY-MM-DD，默认今天"),
+    city: str = Query(..., description="城市名称，如：广州"),
+    time: str = Query("12:00", description="时刻 HH:MM"),
+):
+    """
+    查询当日星盘的主要相位（GET）。
+    用于在工作流中获取结构化相位数据，方便大模型生成文案。
+    """
+    chart_date = _parse_date(date_str)
+    try:
+        data = get_daily_aspects(chart_date, city.strip(), time_str=time.strip() or "12:00")
         return {"success": True, "data": data}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

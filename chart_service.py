@@ -7,7 +7,7 @@ from typing import Any
 from flatlib.chart import Chart
 from flatlib.datetime import Datetime
 from flatlib.geopos import GeoPos
-from flatlib import const
+from flatlib import const, aspects
 
 from config import get_city_coords
 
@@ -31,6 +31,15 @@ OBJECT_NAMES = {
 }
 
 
+ASPECT_TYPE_NAMES = {
+    const.CONJUNCTION: {"cn": "合相", "en": "Conjunction"},
+    const.SEXTILE: {"cn": "六合", "en": "Sextile"},
+    const.SQUARE: {"cn": "四分相", "en": "Square"},
+    const.TRINE: {"cn": "三分相", "en": "Trine"},
+    const.OPPOSITION: {"cn": "对分相", "en": "Opposition"},
+}
+
+
 def _format_tz(hours: int) -> str:
     """将时区小时转为 flatlib 需要的字符串，如 +08:00。"""
     sign = "+" if hours >= 0 else "-"
@@ -38,19 +47,12 @@ def _format_tz(hours: int) -> str:
     return f"{sign}{h:02d}:00"
 
 
-def get_daily_chart(
+def _build_chart(
     chart_date: date,
     city: str,
-    time_str: str = "12:00",
-) -> dict[str, Any]:
-    """
-    计算指定日期、指定城市（当日中午）的星盘数据。
-
-    :param chart_date: 日期
-    :param city: 城市名称，如「广州」
-    :param time_str: 当天时刻，默认 "12:00"（中午）
-    :return: 包含行星位置、上升/天顶、月相等信息的字典
-    """
+    time_str: str,
+) -> tuple[Chart, float, float, int]:
+    """构建 flatlib Chart，并返回经纬度和时区。"""
     coords = get_city_coords(city)
     if not coords:
         raise ValueError(
@@ -63,6 +65,23 @@ def get_daily_chart(
     flat_date = Datetime(date_str, time_str, tz_str)
     pos = GeoPos(lat, lon)
     chart = Chart(flat_date, pos)
+    return chart, lat, lon, tz_hours
+
+
+def get_daily_chart(
+    chart_date: date,
+    city: str,
+    time_str: str = "12:00",
+) -> dict[str, Any]:
+    """
+    计算指定日期、指定城市的星盘数据。
+
+    :param chart_date: 日期
+    :param city: 城市名称，如「广州」
+    :param time_str: 当天时刻，默认 "12:00"（中午）
+    :return: 包含行星位置、上升/天顶、月相等信息的字典
+    """
+    chart, lat, lon, tz_hours = _build_chart(chart_date, city, time_str)
 
     # 行星与虚点
     planets = []
@@ -72,17 +91,19 @@ def get_daily_chart(
             movement = obj.movement()
         except Exception:
             movement = "Direct"
-        planets.append({
-            "id": obj.id,
-            "name_cn": name_info["cn"],
-            "name_en": name_info["en"],
-            "sign": obj.sign,
-            "sign_lon": round(obj.signlon, 4),
-            "longitude": round(obj.lon, 4),
-            "latitude": round(getattr(obj, "lat", 0) or 0, 6),
-            "speed": round(getattr(obj, "lonspeed", 0) or 0, 6),
-            "movement": movement,
-        })
+        planets.append(
+            {
+                "id": obj.id,
+                "name_cn": name_info["cn"],
+                "name_en": name_info["en"],
+                "sign": obj.sign,
+                "sign_lon": round(obj.signlon, 4),
+                "longitude": round(obj.lon, 4),
+                "latitude": round(getattr(obj, "lat", 0) or 0, 6),
+                "speed": round(getattr(obj, "lonspeed", 0) or 0, 6),
+                "movement": movement,
+            }
+        )
 
     # 上升点与天顶
     angles = []
@@ -92,14 +113,16 @@ def get_daily_chart(
     ]:
         try:
             angle = chart.get(aid)
-            angles.append({
-                "id": aid,
-                "name_cn": label_cn,
-                "name_en": label_en,
-                "sign": angle.sign,
-                "sign_lon": round(angle.signlon, 4),
-                "longitude": round(angle.lon, 4),
-            })
+            angles.append(
+                {
+                    "id": aid,
+                    "name_cn": label_cn,
+                    "name_en": label_en,
+                    "sign": angle.sign,
+                    "sign_lon": round(angle.signlon, 4),
+                    "longitude": round(angle.lon, 4),
+                }
+            )
         except Exception:
             pass
 
@@ -112,11 +135,89 @@ def get_daily_chart(
     return {
         "date": chart_date.isoformat(),
         "city": city,
-        "location": {"lat": lat, "lon": lon, "timezone": f"UTC{_format_tz(tz_hours)}"},
+        "location": {
+            "lat": lat,
+            "lon": lon,
+            "timezone": f"UTC{_format_tz(tz_hours)}",
+        },
         "planets": planets,
         "angles": angles,
         "moon_phase": moon_phase,
         "is_diurnal": chart.isDiurnal(),
+    }
+
+
+def get_daily_aspects(
+    chart_date: date,
+    city: str,
+    time_str: str = "12:00",
+) -> dict[str, Any]:
+    """
+    计算指定日期、指定城市的主要行星相位（结构化数据）。
+
+    :return: 包含所有行星两两之间主要相位的列表。
+    """
+    chart, lat, lon, tz_hours = _build_chart(chart_date, city, time_str)
+
+    objs = list(chart.objects)
+    aspect_items: list[dict[str, Any]] = []
+
+    for i in range(len(objs)):
+        for j in range(i + 1, len(objs)):
+            obj1 = objs[i]
+            obj2 = objs[j]
+            asp = aspects.getAspect(obj1, obj2, const.MAJOR_ASPECTS)
+            if not asp.exists():
+                continue
+
+            type_info = ASPECT_TYPE_NAMES.get(
+                asp.type,
+                {"cn": "未知相位", "en": "Unknown"},
+            )
+
+            name1 = OBJECT_NAMES.get(obj1.id, {"cn": str(obj1.id), "en": str(obj1.id)})
+            name2 = OBJECT_NAMES.get(obj2.id, {"cn": str(obj2.id), "en": str(obj2.id)})
+
+            aspect_items.append(
+                {
+                    "object1": {
+                        "id": obj1.id,
+                        "name_cn": name1["cn"],
+                        "name_en": name1["en"],
+                        "sign": obj1.sign,
+                        "sign_lon": round(obj1.signlon, 4),
+                    },
+                    "object2": {
+                        "id": obj2.id,
+                        "name_cn": name2["cn"],
+                        "name_en": name2["en"],
+                        "sign": obj2.sign,
+                        "sign_lon": round(obj2.signlon, 4),
+                    },
+                    "aspect": {
+                        "type_angle": asp.type,
+                        "type_cn": type_info["cn"],
+                        "type_en": type_info["en"],
+                        "orb": round(asp.orb, 4),
+                        "movement": asp.movement(),
+                        "direction": asp.direction,
+                        "condition": asp.condition,
+                        "active_id": asp.active.id,
+                        "passive_id": asp.passive.id,
+                        "mutual_in_orb": asp.mutualAspect(),
+                    },
+                }
+            )
+
+    return {
+        "date": chart_date.isoformat(),
+        "city": city,
+        "location": {
+            "lat": lat,
+            "lon": lon,
+            "timezone": f"UTC{_format_tz(tz_hours)}",
+        },
+        "aspects": aspect_items,
     }
 
 
