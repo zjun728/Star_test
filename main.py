@@ -39,6 +39,20 @@ class DailyChartQuery(BaseModel):
     )
 
 
+class DailyAspectsQuery(BaseModel):
+    """当日相位查询参数（POST body）。"""
+
+    date: Optional[str] = Field(
+        None,
+        description="查询日期，YYYY-MM-DD，不传则默认为当天",
+    )
+    city: str = Field(..., description="城市名称，如：广州、北京、上海")
+    time: Optional[str] = Field(
+        "12:00",
+        description="当天时刻 HH:MM，默认中午 12:00",
+    )
+
+
 class NatalChartQuery(BaseModel):
     """本命盘查询参数（POST body）。"""
 
@@ -119,19 +133,19 @@ async def api_daily_chart_get(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/daily-aspects")
-async def api_daily_aspects_get(
-    date_str: Optional[str] = Query(None, description="日期 YYYY-MM-DD，默认今天"),
-    city: str = Query(..., description="城市名称，如：广州"),
-    time: str = Query("12:00", description="时刻 HH:MM"),
-):
+@app.post("/api/daily-aspects")
+async def api_daily_aspects_post(body: DailyAspectsQuery):
     """
-    查询当日星盘的主要相位（GET）。
-    用于在工作流中获取结构化相位数据，方便大模型生成文案。
+    查询当日星盘的主要相位（POST）。
+    请求体示例: {"date": "2025-03-02", "city": "广州", "time": "12:00"}
     """
-    chart_date = _parse_date(date_str)
+    chart_date = _parse_date(body.date)
     try:
-        data = get_daily_aspects(chart_date, city.strip(), time_str=time.strip() or "12:00")
+        data = get_daily_aspects(
+            chart_date,
+            body.city.strip(),
+            time_str=(body.time or "12:00").strip(),
+        )
         return {"success": True, "data": data}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
