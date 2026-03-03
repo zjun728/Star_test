@@ -31,6 +31,23 @@ OBJECT_NAMES = {
 }
 
 
+# 星座英文 -> 中文名称
+SIGN_NAMES_CN = {
+    const.ARIES: "白羊座",
+    const.TAURUS: "金牛座",
+    const.GEMINI: "双子座",
+    const.CANCER: "巨蟹座",
+    const.LEO: "狮子座",
+    const.VIRGO: "处女座",
+    const.LIBRA: "天秤座",
+    const.SCORPIO: "天蝎座",
+    const.SAGITTARIUS: "射手座",
+    const.CAPRICORN: "摩羯座",
+    const.AQUARIUS: "水瓶座",
+    const.PISCES: "双鱼座",
+}
+
+
 ASPECT_TYPE_NAMES = {
     const.CONJUNCTION: {"cn": "合相", "en": "Conjunction"},
     const.SEXTILE: {"cn": "六合", "en": "Sextile"},
@@ -232,6 +249,23 @@ def get_natal_chart(
     :param birth_date: 出生日期
     :param birth_time: 出生时间，如 "14:30"
     :param city: 出生地城市
-    :return: 星盘数据字典，结构同 get_daily_chart
+    :return: 星盘数据字典，附带太阳星座等摘要
     """
-    return get_daily_chart(birth_date, city, time_str=birth_time)
+    data = get_daily_chart(birth_date, city, time_str=birth_time)
+
+    sun_sign_en = None
+    for obj in data.get("planets", []):
+        if obj.get("id") == const.SUN:
+            sun_sign_en = obj.get("sign")
+            break
+
+    if sun_sign_en:
+        sun_sign_cn = SIGN_NAMES_CN.get(sun_sign_en, sun_sign_en)
+    else:
+        sun_sign_cn = None
+
+    data["summary"] = {
+        "sun_sign_en": sun_sign_en,
+        "sun_sign_cn": sun_sign_cn,
+    }
+    return data
