@@ -14,12 +14,16 @@ from pydantic import BaseModel, Field
 
 from config import get_city_coords, search_cities
 from chart_service import get_daily_chart, get_natal_chart, get_daily_aspects
+from horoscope_data import router as horoscope_router
 
 app = FastAPI(
     title="星盘查询 API",
     description="根据日期与城市查询当日星盘或本命盘数据，适用于扣子/Coze 等工作流调用。",
     version="1.0.0",
 )
+
+# 注册运势数据路由
+app.include_router(horoscope_router)
 
 
 # ---------- 请求/响应模型 ----------
@@ -71,11 +75,17 @@ async def root():
         "service": "星盘查询 API",
         "docs": "/docs",
         "endpoints": {
-            "daily_chart": "GET/POST /api/daily-chart - 当日星盘",
+            "daily_chart": "GET/POST /api/daily-chart - 当日星盘（完整版）",
+            "daily_chart_simple": "POST /api/daily-chart-simple - 当日星盘（简化版）",
             "natal_chart": "POST /api/natal-chart - 本命盘",
             "cities": "GET /api/cities - 支持的城市列表",
+            "weekly_chart": "POST /api/weekly-chart - 周星盘数据",
+            "monthly_chart": "POST /api/monthly-chart - 月星盘数据",
+            "yearly_chart": "POST /api/yearly-chart - 年星盘数据",
+            "cache_stats": "GET /api/cache-stats - 缓存统计",
+            "cache_clear": "GET /api/cache-clear - 清空缓存",
         },
-    }
+    },
 
 
 @app.get("/api/cities")
