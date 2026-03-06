@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""基于 flatlib 的当日星盘计算服务。"""
+"""
+基于 flatlib 的当日星盘计算服务。
+提供完整的星盘数据计算，包括行星位置、角度点、宫位和相位。
+"""
 
 from datetime import date
 from typing import Any
@@ -57,6 +60,23 @@ ASPECT_TYPE_NAMES = {
 }
 
 
+# 【新增】宫位 ID 到中文/英文展示名
+HOUSE_NAMES = {
+    const.HOUSE1: {"cn": "第 1 宫", "en": "House 1"},
+    const.HOUSE2: {"cn": "第 2 宫", "en": "House 2"},
+    const.HOUSE3: {"cn": "第 3 宫", "en": "House 3"},
+    const.HOUSE4: {"cn": "第 4 宫", "en": "House 4"},
+    const.HOUSE5: {"cn": "第 5 宫", "en": "House 5"},
+    const.HOUSE6: {"cn": "第 6 宫", "en": "House 6"},
+    const.HOUSE7: {"cn": "第 7 宫", "en": "House 7"},
+    const.HOUSE8: {"cn": "第 8 宫", "en": "House 8"},
+    const.HOUSE9: {"cn": "第 9 宫", "en": "House 9"},
+    const.HOUSE10: {"cn": "第 10 宫", "en": "House 10"},
+    const.HOUSE11: {"cn": "第 11 宫", "en": "House 11"},
+    const.HOUSE12: {"cn": "第 12 宫", "en": "House 12"},
+}
+
+
 def _format_tz(hours: int) -> str:
     """将时区小时转为 flatlib 需要的字符串，如 +08:00。"""
     sign = "+" if hours >= 0 else "-"
@@ -96,7 +116,7 @@ def get_daily_chart(
     :param chart_date: 日期
     :param city: 城市名称，如「广州」
     :param time_str: 当天时刻，默认 "12:00"（中午）
-    :return: 包含行星位置、上升/天顶、月相等信息的字典
+    :return: 包含行星位置、上升/天顶、宫位、月相等信息的字典
     """
     chart, lat, lon, tz_hours = _build_chart(chart_date, city, time_str)
 
@@ -143,6 +163,36 @@ def get_daily_chart(
         except Exception:
             pass
 
+    # 【新增】12 宫位数据
+    houses = []
+    for i in range(1, 13):
+        house_id = getattr(const, f'HOUSE{i}')
+        house_name_info = HOUSE_NAMES.get(house_id, {"cn": f"第{i}宫", "en": f"House {i}"})
+        try:
+            house = chart.get(house_id)
+            houses.append(
+                {
+                    "house_number": i,
+                    "name_cn": house_name_info["cn"],
+                    "name_en": house_name_info["en"],
+                    "sign": house.sign,
+                    "sign_lon": round(house.signlon, 4),
+                    "longitude": round(house.lon, 4),
+                }
+            )
+        except Exception:
+            # 如果某个宫位获取失败，仍然保留占位信息
+            houses.append(
+                {
+                    "house_number": i,
+                    "name_cn": house_name_info["cn"],
+                    "name_en": house_name_info["en"],
+                    "sign": None,
+                    "sign_lon": None,
+                    "longitude": None,
+                }
+            )
+
     # 月相
     try:
         moon_phase = chart.getMoonPhase()
@@ -159,6 +209,7 @@ def get_daily_chart(
         },
         "planets": planets,
         "angles": angles,
+        "houses": houses,  # 【新增】宫位数据
         "moon_phase": moon_phase,
         "is_diurnal": chart.isDiurnal(),
     }
