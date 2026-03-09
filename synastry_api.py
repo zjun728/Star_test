@@ -30,7 +30,7 @@ class SynastryQuery(BaseModel):
     include_indicators: bool = Field(True, description="是否包含关系指标评分")
 
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["合盘分析"])
 
 
 @router.post("/synastry-chart")
