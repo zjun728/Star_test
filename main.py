@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from config import get_city_coords, search_cities
 from chart_service import get_daily_chart, get_natal_chart, get_daily_aspects
 from horoscope_data import router as horoscope_router
+from synastry_api import router as synastry_router
 
 app = FastAPI(
     title="星盘查询 API",
@@ -24,6 +25,9 @@ app = FastAPI(
 
 # 注册运势数据路由
 app.include_router(horoscope_router)
+
+# 注册合盘分析路由
+app.include_router(synastry_router)
 
 
 # ---------- 请求/响应模型 ----------
@@ -84,6 +88,8 @@ async def root():
             "yearly_chart": "POST /api/yearly-chart - 年星盘数据",
             "cache_stats": "GET /api/cache-stats - 缓存统计",
             "cache_clear": "GET /api/cache-clear - 清空缓存",
+            "synastry_chart": "POST /api/synastry-chart - 合盘分析（比较盘 + 组合盘）",
+            "relationship_compatibility": "POST /api/relationship-compatibility - 关系兼容性（简化版）",
         },
     },
 
