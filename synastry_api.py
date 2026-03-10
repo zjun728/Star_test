@@ -13,6 +13,44 @@ from pydantic import BaseModel, Field
 from synastry_service import get_synastry_analysis
 
 
+def parse_birth_date(date_str: str) -> date:
+    """解析出生日期"""
+    try:
+        return date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="日期格式错误，请使用 YYYY-MM-DD 格式"
+        )
+
+
+def validate_birth_time(time_str: str) -> None:
+    """验证出生时间格式"""
+    if ":" not in time_str:
+        raise HTTPException(
+            status_code=400,
+            detail="时间格式错误，请使用 HH:MM 格式（如 14:30）"
+        )
+
+
+def handle_error(e: Exception) -> None:
+    """统一错误处理"""
+    error_msg = str(e)
+    if "暂不支持城市" in error_msg:
+        raise HTTPException(
+            status_code=400,
+            detail=f"城市错误：{error_msg}"
+        )
+    elif hasattr(e, 'status_code') and e.status_code == 400:  # type: ignore
+        raise
+    else:
+        # 其他错误返回 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"合盘计算失败：{error_msg}"
+        )
+
+
 class PersonInfo(BaseModel):
     """个人信息模型"""
     name: str = Field(..., description="姓名", example="张三")
@@ -101,24 +139,12 @@ async def get_synastry_chart(body: SynastryQuery):
     """
     try:
         # 解析日期
-        try:
-            birth_date_a = date.fromisoformat(body.personA.birth_date)
-            birth_date_b = date.fromisoformat(body.personB.birth_date)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="日期格式错误，请使用 YYYY-MM-DD 格式"
-            )
+        birth_date_a = parse_birth_date(body.personA.birth_date)
+        birth_date_b = parse_birth_date(body.personB.birth_date)
         
         # 验证出生时间格式
-        try:
-            if ":" not in body.personA.birth_time or ":" not in body.personB.birth_time:
-                raise ValueError("时间格式错误")
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="时间格式错误，请使用 HH:MM 格式（如 14:30）"
-            )
+        validate_birth_time(body.personA.birth_time)
+        validate_birth_time(body.personB.birth_time)
         
         # 获取合盘数据
         result = get_synastry_analysis(
@@ -138,20 +164,7 @@ async def get_synastry_chart(body: SynastryQuery):
         }
         
     except Exception as e:
-        error_msg = str(e)
-        if "暂不支持城市" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail=f"城市错误：{error_msg}"
-            )
-        elif status_code == 400:
-            raise
-        else:
-            # 其他错误返回 500
-            raise HTTPException(
-                status_code=500,
-                detail=f"合盘计算失败：{error_msg}"
-            )
+        handle_error(e)
 
 
 @router.post("/relationship-compatibility")
@@ -164,14 +177,12 @@ async def get_relationship_compatibility(body: SynastryQuery):
     """
     try:
         # 解析日期
-        try:
-            birth_date_a = date.fromisoformat(body.personA.birth_date)
-            birth_date_b = date.fromisoformat(body.personB.birth_date)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="日期格式错误，请使用 YYYY-MM-DD 格式"
-            )
+        birth_date_a = parse_birth_date(body.personA.birth_date)
+        birth_date_b = parse_birth_date(body.personB.birth_date)
+        
+        # 验证出生时间格式
+        validate_birth_time(body.personA.birth_time)
+        validate_birth_time(body.personB.birth_time)
         
         # 获取完整数据
         result = get_synastry_analysis(
@@ -210,16 +221,4 @@ async def get_relationship_compatibility(body: SynastryQuery):
         }
         
     except Exception as e:
-        error_msg = str(e)
-        if "暂不支持城市" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail=f"城市错误：{error_msg}"
-            )
-        elif hasattr(e, 'status_code') and e.status_code == 400:  # type: ignore
-            raise
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"关系分析失败：{error_msg}"
-            )
+        handle_error(e)

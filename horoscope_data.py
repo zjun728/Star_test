@@ -100,7 +100,9 @@ def _get_cached_chart(date_str: str, city: str) -> Dict[str, Any]:
 def _build_chart_data(chart_date: date, city: str, is_today: bool = False) -> Dict[str, Any]:
     """构建单个日期的星盘数据（使用缓存）"""
     date_str = chart_date.isoformat()
-    chart_data = _get_cached_chart(date_str, city)
+    cached_data = _get_cached_chart(date_str, city)
+    # 创建新的字典对象，避免修改缓存数据
+    chart_data = cached_data.copy()
     chart_data["is_today"] = is_today
     return chart_data
 

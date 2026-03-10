@@ -116,10 +116,10 @@ def get_city_coords(city: str):
     支持「广州」「广州市」「Guangzhou」等写法。
     若城市不在表中，返回 None。
     """
-    if not city:
+    if not city or not isinstance(city, str):
         return None
     key = _normalize_city_name(city)
-    if not key:
+    if not key or len(key) < 2:
         return None
     info = _build_city_index().get(key)
     if not info:

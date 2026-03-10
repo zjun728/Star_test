@@ -130,6 +130,18 @@ def _parse_date(s: Optional[str]) -> date:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"日期格式错误，请使用 YYYY-MM-DD: {e}")
 
+def _validate_time(s: Optional[str]) -> str:
+    """验证时间格式，返回标准化的时间字符串"""
+    if not s or not s.strip():
+        return "12:00"
+    time_str = s.strip()
+    try:
+        # 验证时间格式
+        datetime.strptime(time_str, "%H:%M")
+        return time_str
+    except ValueError:
+        raise HTTPException(status_code=400, detail="时间格式错误，请使用 HH:MM 格式（如 14:30）")
+
 
 @app.get("/api/daily-chart")
 async def api_daily_chart_get(
@@ -142,8 +154,9 @@ async def api_daily_chart_get(
     扣子工作流可直接用 GET 请求，参数放在 query string。
     """
     chart_date = _parse_date(date_str)
+    validated_time = _validate_time(time)
     try:
-        data = get_daily_chart(chart_date, city.strip(), time_str=time.strip() or "12:00")
+        data = get_daily_chart(chart_date, city.strip(), time_str=validated_time)
         return {"success": True, "data": data}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -156,11 +169,12 @@ async def api_daily_aspects_post(body: DailyAspectsQuery):
     请求体示例: {"date": "2025-03-02", "city": "广州", "time": "12:00"}
     """
     chart_date = _parse_date(body.date)
+    validated_time = _validate_time(body.time)
     try:
         data = get_daily_aspects(
             chart_date,
             body.city.strip(),
-            time_str=(body.time or "12:00").strip(),
+            time_str=validated_time,
         )
         return {"success": True, "data": data}
     except ValueError as e:
@@ -174,11 +188,12 @@ async def api_daily_chart_post(body: DailyChartQuery):
     请求体示例: {"date": "2025-03-02", "city": "广州", "time": "12:00"}
     """
     chart_date = _parse_date(body.date)
+    validated_time = _validate_time(body.time)
     try:
         data = get_daily_chart(
             chart_date,
             body.city.strip(),
-            time_str=(body.time or "12:00").strip(),
+            time_str=validated_time,
         )
         return {"success": True, "data": data}
     except ValueError as e:
@@ -192,10 +207,11 @@ async def api_natal_chart(body: NatalChartQuery):
     请求体示例: {"birth_date": "1990-05-20", "birth_time": "14:30", "city": "广州"}
     """
     birth_date = _parse_date(body.birth_date)
+    validated_time = _validate_time(body.birth_time)
     try:
         data = get_natal_chart(
             birth_date,
-            body.birth_time.strip(),
+            validated_time,
             body.city.strip(),
         )
         return {"success": True, "data": data}

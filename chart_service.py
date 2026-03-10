@@ -6,6 +6,7 @@
 
 from datetime import date
 from typing import Any
+from functools import lru_cache
 
 from flatlib.chart import Chart
 from flatlib.datetime import Datetime
@@ -105,6 +106,7 @@ def _build_chart(
     return chart, lat, lon, tz_hours
 
 
+@lru_cache(maxsize=1000)
 def get_daily_chart(
     chart_date: date,
     city: str,
@@ -126,7 +128,7 @@ def get_daily_chart(
         name_info = OBJECT_NAMES.get(obj.id, {"cn": str(obj.id), "en": str(obj.id)})
         try:
             movement = obj.movement()
-        except Exception:
+        except (AttributeError, ValueError):
             movement = "Direct"
         planets.append(
             {
@@ -160,7 +162,7 @@ def get_daily_chart(
                     "longitude": round(angle.lon, 4),
                 }
             )
-        except Exception:
+        except (AttributeError, ValueError):
             pass
 
     # 【新增】12 宫位数据
@@ -180,7 +182,7 @@ def get_daily_chart(
                     "longitude": round(house.lon, 4),
                 }
             )
-        except Exception:
+        except (AttributeError, ValueError):
             # 如果某个宫位获取失败，仍然保留占位信息
             houses.append(
                 {
@@ -196,7 +198,7 @@ def get_daily_chart(
     # 月相
     try:
         moon_phase = chart.getMoonPhase()
-    except Exception:
+    except (AttributeError, ValueError):
         moon_phase = None
 
     return {
@@ -215,6 +217,7 @@ def get_daily_chart(
     }
 
 
+@lru_cache(maxsize=1000)
 def get_daily_aspects(
     chart_date: date,
     city: str,
@@ -289,6 +292,7 @@ def get_daily_aspects(
     }
 
 
+@lru_cache(maxsize=1000)
 def get_natal_chart(
     birth_date: date,
     birth_time: str,

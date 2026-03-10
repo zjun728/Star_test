@@ -6,6 +6,7 @@
 
 from datetime import date
 from typing import Any, Dict, List, Optional
+from functools import lru_cache
 
 from flatlib import const, aspects
 from flatlib.chart import Chart
@@ -284,8 +285,8 @@ def calculate_composite(chart_a: Dict[str, Any], chart_b: Dict[str, Any]) -> Dic
 def calculate_relationship_indicators(synastry_data: Dict[str, Any], 
                                      composite_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    计算关系指标（简化版评分）
-    
+    计算关系指标（专业版评分）
+
     :param synastry_data: 比较盘数据
     :param composite_data: 组合盘数据
     :return: 关系指标评分
@@ -302,57 +303,182 @@ def calculate_relationship_indicators(synastry_data: Dict[str, Any],
     planets_in_houses = synastry_data.get("planets_in_houses", [])
     cross_aspects = synastry_data.get("cross_aspects", [])
     
-    # 重要指标权重
-    important_indicators = {
-        ("Sun", 5): 10,      # 太阳落入 5 宫（恋爱宫）
-        ("Sun", 7): 15,      # 太阳落入 7 宫（伴侣宫）
-        ("Moon", 4): 8,      # 月亮落入 4 宫（家庭宫）
-        ("Moon", 7): 12,     # 月亮落入 7 宫
-        ("Venus", 5): 10,    # 金星落入 5 宫
-        ("Venus", 7): 15,    # 金星落入 7 宫
-        ("Mars", 5): 8,      # 火星落入 5 宫
-        ("Mars", 8): 10,     # 火星落入 8 宫（性吸引力）
+    # 初始化各项指标分数
+    emotional_score = 0
+    communication_score = 0
+    physical_score = 0
+    long_term_score = 0
+    
+    # 行星落入宫位的权重配置
+    house_placement_weights = {
+        # 情感兼容性相关
+        ("Moon", 4): 12,    # 月亮落入 4 宫（家庭宫）
+        ("Moon", 7): 15,    # 月亮落入 7 宫（伴侣宫）
+        ("Sun", 7): 12,     # 太阳落入 7 宫
+        ("Venus", 7): 14,   # 金星落入 7 宫
+        
+        # 沟通分数相关
+        ("Mercury", 3): 10, # 水星落入 3 宫（沟通宫）
+        ("Mercury", 9): 8,  # 水星落入 9 宫（高等教育宫）
+        ("Sun", 3): 7,      # 太阳落入 3 宫
+        
+        # 身体吸引力相关
+        ("Venus", 5): 12,   # 金星落入 5 宫（恋爱宫）
+        ("Mars", 5): 10,    # 火星落入 5 宫
+        ("Venus", 8): 14,   # 金星落入 8 宫（性宫）
+        ("Mars", 8): 13,    # 火星落入 8 宫
+        
+        # 长期潜力相关
+        ("Saturn", 7): 15,  # 土星落入 7 宫（稳定关系）
+        ("Jupiter", 7): 10, # 木星落入 7 宫（成长关系）
+        ("Sun", 10): 8,     # 太阳落入 10 宫（事业合作）
     }
     
-    score = 0
+    # 处理行星落入宫位
     for entry in planets_in_houses:
-        key = (entry["planet_name"], entry["house_number"])
-        if key in important_indicators:
-            score += important_indicators[key]
+        planet_name = entry["planet_name"]
+        planet_id = entry["planet_id"]
+        house_number = entry["house_number"]
+        
+        # 优先使用英文名称作为键
+        key = (planet_id, house_number)
+        if key not in house_placement_weights:
+            # 兼容处理，尝试使用中文名称
+            key = (planet_name, house_number)
+        
+        if key in house_placement_weights:
+            weight = house_placement_weights[key]
+            
+            # 根据宫位和行星类型分配分数到相应指标
+            if house_number in [4, 7]:
+                emotional_score += weight
+            if house_number in [3, 9]:
+                communication_score += weight
+            if house_number in [5, 8]:
+                physical_score += weight
+            if house_number in [7, 10]:
+                long_term_score += weight
     
-    # 基于交叉相位计分
+    # 相位权重配置
+    aspect_weights = {
+        # 情感兼容性相关相位
+        ("Moon", "Sun"): 15,
+        ("Moon", "Venus"): 14,
+        ("Sun", "Venus"): 12,
+        
+        # 沟通相关相位
+        ("Mercury", "Mercury"): 12,
+        ("Mercury", "Sun"): 10,
+        ("Mercury", "Moon"): 9,
+        
+        # 身体吸引力相关相位
+        ("Mars", "Venus"): 16,
+        ("Mars", "Mars"): 10,
+        ("Venus", "Venus"): 8,
+        
+        # 长期潜力相关相位
+        ("Saturn", "Sun"): 14,
+        ("Saturn", "Moon"): 12,
+        ("Jupiter", "Sun"): 10,
+        ("Jupiter", "Moon"): 9,
+    }
+    
+    # 处理交叉相位
     positive_aspects = [const.TRINE, const.SEXTILE, const.CONJUNCTION]
     challenging_aspects = [const.SQUARE, const.OPPOSITION]
     
     for aspect in cross_aspects:
-        if aspect["aspect_type"] in positive_aspects:
-            # 吉相加分
-            if aspect["person1_planet_name"] in ["Venus", "Moon", "Sun"]:
-                score += 8
-            elif aspect["person2_planet_name"] in ["Venus", "Moon", "Sun"]:
-                score += 8
-            else:
-                score += 3
-        elif aspect["aspect_type"] in challenging_aspects:
-            # 凶相减分（但也有吸引力）
-            if aspect["person1_planet_name"] in ["Venus", "Mars"] or \
-               aspect["person2_planet_name"] in ["Venus", "Mars"]:
-                score += 5  # 金火相位有吸引力
-            else:
-                score -= 3
+        planet1_name = aspect["person1_planet_name"]
+        planet2_name = aspect["person2_planet_name"]
+        planet1_id = aspect["person1_planet_id"]
+        planet2_id = aspect["person2_planet_id"]
+        aspect_type = aspect["aspect_type"]
+        
+        # 优先使用行星ID（英文名称）
+        planet1 = planet1_id
+        planet2 = planet2_id
+        
+        # 标准化行星顺序，确保 (A, B) 和 (B, A) 被视为同一组合
+        if planet1 > planet2:
+            planet1, planet2 = planet2, planet1
+        
+        aspect_key = (planet1, planet2)
+        
+        if aspect_key in aspect_weights:
+            base_weight = aspect_weights[aspect_key]
+            
+            if aspect_type in positive_aspects:
+                # 吉相加分
+                if planet1 in ["Moon", "Venus", "Sun"] or planet2 in ["Moon", "Venus", "Sun"]:
+                    emotional_score += base_weight
+                if planet1 in ["Mercury"] or planet2 in ["Mercury"]:
+                    communication_score += base_weight * 0.8
+                if planet1 in ["Mars", "Venus"] or planet2 in ["Mars", "Venus"]:
+                    physical_score += base_weight
+                if planet1 in ["Saturn", "Jupiter"] or planet2 in ["Saturn", "Jupiter"]:
+                    long_term_score += base_weight
+            elif aspect_type in challenging_aspects:
+                # 凶相：根据行星组合调整分数
+                if (planet1, planet2) == ("Mars", "Venus"):
+                    # 金火刑冲有强烈吸引力
+                    physical_score += base_weight * 0.7
+                elif (planet1, planet2) == ("Moon", "Sun"):
+                    # 日月刑冲是重要的情感挑战
+                    emotional_score += base_weight * 0.5
+                else:
+                    # 其他凶相适当减分
+                    total_score = emotional_score + communication_score + physical_score + long_term_score
+                    if total_score > 50:
+                        # 如果整体分数较高，凶相的负面影响较小
+                        pass
+                    else:
+                        # 整体分数较低时，凶相的负面影响较大
+                        if planet1 in ["Moon", "Venus", "Sun"] or planet2 in ["Moon", "Venus", "Sun"]:
+                            emotional_score -= base_weight * 0.3
+                        if planet1 in ["Mercury"] or planet2 in ["Mercury"]:
+                            communication_score -= base_weight * 0.3
     
-    # 转换为 0-100 的评分
-    indicators["overall_harmony"] = min(100, max(0, score))
+    # 组合盘分析（如果有）
+    if composite_data:
+        composite_planets = {p["id"]: p for p in composite_data.get("planets", [])}
+        
+        # 组合盘太阳和月亮的位置对关系有重要影响
+        if "Sun" in composite_planets and "Moon" in composite_planets:
+            emotional_score += 10
+        
+        # 组合盘金星的位置影响关系和谐度
+        if "Venus" in composite_planets:
+            physical_score += 8
+        
+        # 组合盘土星的位置影响长期稳定性
+        if "Saturn" in composite_planets:
+            long_term_score += 12
     
-    # 细化各项指标（简化版，实际可以更复杂）
-    indicators["emotional_compatibility"] = indicators["overall_harmony"]
-    indicators["communication_score"] = indicators["overall_harmony"]
-    indicators["physical_attraction"] = min(100, indicators["overall_harmony"] + 10)
-    indicators["long_term_potential"] = indicators["overall_harmony"]
+    # 计算各项指标的最终分数（0-100）
+    max_possible = 200  # 估算的最大可能分数
+    indicators["emotional_compatibility"] = min(100, max(0, int((emotional_score / max_possible) * 100)))
+    indicators["communication_score"] = min(100, max(0, int((communication_score / max_possible) * 100)))
+    indicators["physical_attraction"] = min(100, max(0, int((physical_score / max_possible) * 100)))
+    indicators["long_term_potential"] = min(100, max(0, int((long_term_score / max_possible) * 100)))
+    
+    # 计算整体和谐度（加权平均）
+    weights = {
+        "emotional_compatibility": 0.35,
+        "communication_score": 0.25,
+        "physical_attraction": 0.20,
+        "long_term_potential": 0.20
+    }
+    
+    overall = 0
+    for key, weight in weights.items():
+        overall += indicators[key] * weight
+    
+    indicators["overall_harmony"] = min(100, max(0, int(overall)))
     
     return indicators
 
 
+@lru_cache(maxsize=500)
 def get_synastry_analysis(
     personA_birth_date: date,
     personA_birth_time: str,
@@ -365,7 +491,7 @@ def get_synastry_analysis(
 ) -> Dict[str, Any]:
     """
     获取完整的合盘分析数据
-    
+
     :param personA_birth_date: A 的出生日期
     :param personA_birth_time: A 的出生时间
     :param personA_birth_city: A 的出生城市
